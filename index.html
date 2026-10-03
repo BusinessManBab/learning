@@ -58,10 +58,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "r") reset();
 });
 document.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
-canvas.addEventListener("mousemove", (e) => {
-  const rect = canvas.getBoundingClientRect();
-  player.y = (e.clientY - rect.top) * (H / rect.height) - PADDLE_H / 2;
-});
 
 function serve() {
   if (over) { reset(); return; }
@@ -90,9 +86,9 @@ function reset() {
 // --- Update -------------------------------------------------------------
 
 function update() {
-  // Player paddle: W/S or arrow keys (mouse also works)
-  if (keys.has("w") || keys.has("arrowup"))   player.y -= PADDLE_SPEED;
-  if (keys.has("s") || keys.has("arrowdown")) player.y += PADDLE_SPEED;
+  // Player paddle: WASD only (W/S - the paddle only moves vertically)
+  if (keys.has("w")) player.y -= PADDLE_SPEED;
+  if (keys.has("s")) player.y += PADDLE_SPEED;
   player.y = clamp(player.y);
   ai.y = clamp(ai.y);
 
@@ -190,7 +186,7 @@ function draw() {
 
   ctx.fillStyle = "#666";
   ctx.font = "14px monospace";
-  ctx.fillText("Mouse or W/S to move - first to " + WIN_SCORE, W / 2, H - 16);
+  ctx.fillText("W/S to move - first to " + WIN_SCORE, W / 2, H - 16);
 }
 
 // --- Main loop ----------------------------------------------------------
