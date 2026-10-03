@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pong</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #111;
+    color: #eee;
+    font-family: monospace;
+  }
+  #game {
+    background: #000;
+    border: 2px solid #eee;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="500"></canvas>
+
+<script>
+"use strict";
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const W = canvas.width;
+const H = canvas.height;
+
+const PADDLE_W = 12;
+const PADDLE_H = 90;
+const PADDLE_SPEED = 7;
+const BALL_R = 8;
+const WIN_SCORE = 7;
+
+// --- Game state ---------------------------------------------------------
+
+const player = { x: 20, y: H / 2 - PADDLE_H / 2, score: 0 };
+const ai     = { x: W - 20 - PADDLE_W, y: H / 2 - PADDLE_H / 2, score: 0 };
+const ball   = { x: W / 2, y: H / 2, vx: 0, vy: 0, speed: 6 };
+
+let running = false;   // ball in play?
+let over = false;      // someone won?
+const keys = new Set();
+
+// --- Input --------------------------------------------------------------
+
+document.addEventListener("keydown", (e) => {
+  keys.add(e.key.toLowerCase());
+  if (e.key === " ") { e.preventDefault(); serve(); }
+  if (e.key.toLowerCase() === "r") reset();
+});
+document.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  player.y = (e.clientY - rect.top) * (H / rect.height) - PADDLE_H / 2;
+});
+
+function serve() {
+  if (over) { reset(); return; }
+  if (running) return;
+  running = true;
+  ball.x = W / 2;
+  ball.y = H / 2;
+  const angle = (Math.random() * 0.6 - 0.3) * Math.PI;   // mostly horizontal
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  ball.speed = 6;
+  ball.vx = Math.cos(angle) * ball.speed * dir;
+  ball.vy = Math.sin(angle) * ball.speed;
+}
+
+function reset() {
+  over = false;
+  running = false;
+  player.score = 0;
+  ai.score = 0;
+  player.y = ai.y = H / 2 - PADDLE_H / 2;
+  ball.x = W / 2;
+  ball.y = H / 2;
+  ball.vx = ball.vy = 0;
+}
+
+// --- Update -------------------------------------------------------------
+
+function update() {
+  // Player paddle: W/S or arrow keys (mouse also works)
+  if (keys.has("w") || keys.has("arrowup"))   player.y -= PADDLE_SPEED;
+  if (keys.has("s") || keys.has("arrowdown")) player.y += PADDLE_SPEED;
+  player.y = clamp(player.y);
+  ai.y = clamp(ai.y);
+
+  if (!running) return;
+
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // Top / bottom walls
+  if (ball.y < BALL_R)          { ball.y = BALL_R;          ball.vy *= -1; }
+  if (ball.y > H - BALL_R)      { ball.y = H - BALL_R;      ball.vy *= -1; }
+
+  // Paddles
+  bounceIfHit(player, +1);
+  bounceIfHit(ai, -1);
+
+  // Simple AI: follow the ball, capped speed
+  const target = ball.y - PADDLE_H / 2;
+  if (Math.abs(target - ai.y) > 8) {
+    ai.y += Math.sign(target - ai.y) * Math.min(PADDLE_SPEED * 0.75, Math.abs(target - ai.y));
+  }
+  ai.y = clamp(ai.y);
+
+  // Scoring
+  if (ball.x < -BALL_R) score(ai);
+  if (ball.x > W + BALL_R) score(player);
+}
+
+function bounceIfHit(paddle, dir) {
+  const hitX = dir > 0
+    ? ball.x + BALL_R > paddle.x && ball.x - BALL_R < paddle.x + PADDLE_W
+    : ball.x - BALL_R < paddle.x + PADDLE_W && ball.x + BALL_R > paddle.x;
+  const hitY = ball.y + BALL_R > paddle.y && ball.y - BALL_R < paddle.y + PADDLE_H;
+
+  if (!hitX || !hitY || Math.sign(ball.vx) === dir) return;
+
+  // Where on the paddle it hit changes the outgoing angle (-1 = top, +1 = bottom)
+  const offset = (ball.y - (paddle.y + PADDLE_H / 2)) / (PADDLE_H / 2);
+  const angle = offset * (Math.PI / 3);
+
+  ball.speed = Math.min(ball.speed + 0.5, 14);   // rally gets faster
+  ball.vx = Math.cos(angle) * ball.speed * dir;
+  ball.vy = Math.sin(angle) * ball.speed;
+  ball.x = dir > 0 ? paddle.x + PADDLE_W + BALL_R : paddle.x - BALL_R;
+}
+
+function score(scorer) {
+  scorer.score++;
+  running = false;
+  ball.x = W / 2;
+  ball.y = H / 2;
+  ball.vx = ball.vy = 0;
+  if (scorer.score >= WIN_SCORE) over = true;
+}
+
+// --- Draw ---------------------------------------------------------------
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Centre line
+  ctx.strokeStyle = "#333";
+  ctx.setLineDash([10, 12]);
+  ctx.beginPath();
+  ctx.moveTo(W / 2, 0);
+  ctx.lineTo(W / 2, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Scores
+  ctx.fillStyle = "#555";
+  ctx.font = "64px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(player.score, W / 4, 70);
+  ctx.fillText(ai.score, (3 * W) / 4, 70);
+
+  // Paddles + ball
+  ctx.fillStyle = "#eee";
+  ctx.fillRect(player.x, player.y, PADDLE_W, PADDLE_H);
+  ctx.fillRect(ai.x, ai.y, PADDLE_W, PADDLE_H);
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Messages
+  ctx.fillStyle = "#eee";
+  ctx.font = "20px monospace";
+  if (over) {
+    const winner = player.score >= WIN_SCORE ? "YOU WIN!" : "AI WINS!";
+    ctx.fillText(winner, W / 2, H / 2 - 10);
+    ctx.fillText("Press R to play again", W / 2, H / 2 + 30);
+  } else if (!running) {
+    ctx.fillText("Press SPACE to serve", W / 2, H / 2 - 10);
+  }
+
+  ctx.fillStyle = "#666";
+  ctx.font = "14px monospace";
+  ctx.fillText("Mouse or W/S to move - first to " + WIN_SCORE, W / 2, H - 16);
+}
+
+// --- Main loop ----------------------------------------------------------
+
+function frame() {
+  update();
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function clamp(y) {
+  return Math.max(0, Math.min(H - PADDLE_H, y));
+}
+
+frame();
+</script>
+</body>
+</html>
